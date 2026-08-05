@@ -1,409 +1,1447 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#050805">
-  <title>NightOwl</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { height: 100%; }
-    body {
-      display: grid;
-      place-items: center;
-      min-height: 100vh;
-      min-height: 100dvh;
-      padding: 20px;
-      overflow-x: hidden;
-      background: radial-gradient(ellipse at center, #0b120d 0%, #050805 75%);
-      font-family: "Consolas", "Courier New", monospace;
-      color: #35ff7a;
-    }
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0a0a0f">
+<meta name="description" content="以截图为核心的 Obsidian 错题管理系统：一键录入、仪表盘定位薄弱点、随机组卷自测、间隔复习调度。">
+<title>Obsidian 错题管理系统 · Mistake Notebook</title>
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg-soft: #0e0e15;
+  --surface: #12121a;
+  --card: rgba(255, 255, 255, 0.035);
+  --card-hover: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --text: #f5f5f7;
+  --muted: #a2a2b0;
+  --faint: #6f6f7d;
+  --amber: #ffb454;
+  --rose: #ff7a6b;
+  --accent: var(--amber);
+  --grad: linear-gradient(120deg, #ffb454 0%, #ff8a5c 55%, #ff7a6b 100%);
+  --font-sans: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Cascadia Code", Consolas, monospace;
+  --r-lg: 22px;
+  --r-md: 14px;
+  --r-sm: 10px;
+  --shadow-lg: 0 30px 80px rgba(0, 0, 0, 0.55);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
 
-    /* 屏幕扫描线和暗角 */
-    .crt {
-      position: fixed;
-      inset: 0;
-      z-index: 10;
-      pointer-events: none;
-      background:
-        repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.25) 0px, rgba(0, 0, 0, 0.25) 1px, transparent 1px, transparent 3px),
-        radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.55) 100%);
-    }
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
-    .wrap {
-      position: relative;
-      z-index: 2;
-      width: min(920px, 96vw);
-    }
+html { scroll-behavior: smooth; }
 
-    .terminal {
-      background: #0a100c;
-      border: 1px solid rgba(53, 255, 122, 0.3);
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow:
-        0 0 60px rgba(53, 255, 122, 0.12),
-        inset 0 0 60px rgba(53, 255, 122, 0.03);
-    }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
 
-    .titlebar {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      padding: 10px 14px;
-      background: rgba(53, 255, 122, 0.06);
-      border-bottom: 1px solid rgba(53, 255, 122, 0.18);
-      font-size: 0.8rem;
-      color: rgba(53, 255, 122, 0.75);
-    }
+::selection { background: rgba(255, 180, 84, 0.3); }
 
-    .dots { display: flex; gap: 6px; min-width: 60px; }
-    .dots i {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      display: inline-block;
-    }
-    .dots i:nth-child(1) { background: #ff5f56; }
-    .dots i:nth-child(2) { background: #ffbd2e; }
-    .dots i:nth-child(3) { background: #27c93f; }
+a { color: inherit; text-decoration: none; }
 
-    .title { flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .pad { min-width: 60px; }
+/* ---------- background texture & glows ---------- */
+.noise {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+}
 
-    .screen {
-      padding: 26px 28px 30px;
-      min-height: 380px;
-      max-height: min(74vh, 720px);
-      overflow-y: auto;
-      font-size: 15px;
-      line-height: 1.55;
-      color: #35ff7a;
-      text-shadow: 0 0 8px rgba(53, 255, 122, 0.45);
-      animation: flicker 9s linear infinite;
-      scrollbar-width: thin;
-      scrollbar-color: rgba(53, 255, 122, 0.35) transparent;
-    }
+.hero-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  pointer-events: none;
+}
 
-    .screen::-webkit-scrollbar { width: 8px; }
-    .screen::-webkit-scrollbar-thumb {
-      background: rgba(53, 255, 122, 0.3);
-      border-radius: 4px;
-    }
+/* ---------- nav ---------- */
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  border-bottom: 1px solid transparent;
+  transition: background 0.35s var(--ease), border-color 0.35s var(--ease), backdrop-filter 0.35s var(--ease);
+}
 
-    @keyframes flicker {
-      0%, 100% { opacity: 1; }
-      3% { opacity: 0.97; }
-      4% { opacity: 1; }
-      61% { opacity: 0.98; }
-      62% { opacity: 1; }
-    }
+.nav.scrolled {
+  background: rgba(10, 10, 15, 0.78);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-bottom-color: var(--border);
+}
 
-    .banner {
-      margin: 0 0 22px;
-      font-size: clamp(7px, 2.6vw, 13px);
-      line-height: 1.35;
-      text-shadow:
-        0 0 10px rgba(53, 255, 122, 0.7),
-        0 0 28px rgba(53, 255, 122, 0.25);
-    }
+.nav-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 28px;
+  height: 68px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
 
-    .line {
-      min-height: 1.5em;
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
 
-    .line.muted { color: rgba(53, 255, 122, 0.55); }
+.brand-mark {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--grad);
+  display: grid;
+  place-items: center;
+  color: #171208;
+  box-shadow: 0 6px 18px rgba(255, 138, 92, 0.28);
+}
 
-    .cursor {
-      display: inline-block;
-      width: 0.6em;
-      height: 1.1em;
-      margin-left: 0.12em;
-      vertical-align: -0.15em;
-      background: #35ff7a;
-      box-shadow: 0 0 12px rgba(53, 255, 122, 0.9);
-      animation: blink 1.1s steps(1) infinite;
-    }
+.brand-mark svg { width: 16px; height: 16px; }
 
-    @keyframes blink {
-      0%, 49% { opacity: 1; }
-      50%, 100% { opacity: 0; }
-    }
+.nav-links {
+  display: flex;
+  gap: 30px;
+  font-size: 14px;
+  color: var(--muted);
+}
 
-    .statusbar {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 8px 14px;
-      border-top: 1px solid rgba(53, 255, 122, 0.18);
-      font-size: 0.72rem;
-      letter-spacing: 0.06em;
-      color: rgba(53, 255, 122, 0.6);
-      flex-wrap: wrap;
-    }
+.nav-links a { transition: color 0.25s; }
+.nav-links a:hover { color: var(--text); }
 
-    #hint { animation: blink 1.2s steps(1) infinite; }
+.nav-actions { display: flex; align-items: center; gap: 12px; }
 
-    /* 隐藏的真实输入框：负责弹出手机键盘 */
-    #cmd {
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 1px;
-      height: 1px;
-      opacity: 0;
-      border: 0;
-      padding: 0;
-      background: transparent;
-      color: transparent;
-      caret-color: transparent;
-    }
+.menu-toggle {
+  display: none;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  width: 38px;
+  height: 38px;
+  color: var(--text);
+  cursor: pointer;
+  place-items: center;
+}
 
-    @media (max-width: 560px) {
-      body { padding: 10px; }
-      .wrap { width: 100%; }
-      .screen {
-        padding: 18px 14px 22px;
-        min-height: 300px;
-        font-size: 12.5px;
-      }
-      .banner { font-size: clamp(7px, 2.4vw, 11px); }
-      .title { font-size: 0.62rem; }
-      .statusbar { font-size: 0.6rem; padding: 7px 10px; }
-    }
+.mobile-menu {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 20px 18px;
+  background: rgba(10, 10, 15, 0.94);
+  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--border);
+}
 
-    @media (max-width: 380px) {
-      .screen { padding: 14px 10px 18px; font-size: 11.5px; }
-      .banner { font-size: 7.5px; }
-    }
-  </style>
+.mobile-menu.open { display: flex; }
+.mobile-menu a { padding: 10px 8px; border-radius: 8px; color: var(--muted); font-size: 15px; }
+.mobile-menu a:hover { background: var(--card); color: var(--text); }
+
+/* ---------- buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 20px;
+  border-radius: 12px;
+  font-size: 14.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease),
+    background 0.25s, border-color 0.25s, color 0.25s;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--grad);
+  color: #171208;
+  box-shadow: 0 10px 30px rgba(255, 138, 92, 0.25);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 38px rgba(255, 138, 92, 0.35);
+}
+
+.btn-ghost {
+  background: var(--card);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.btn-ghost:hover {
+  background: var(--card-hover);
+  border-color: rgba(255, 255, 255, 0.24);
+  transform: translateY(-2px);
+}
+
+.btn-sm { padding: 8px 15px; font-size: 13.5px; border-radius: 10px; }
+
+.btn svg { width: 15px; height: 15px; }
+
+/* ---------- hero ---------- */
+.hero {
+  position: relative;
+  padding: 96px 28px 72px;
+  overflow: hidden;
+}
+
+.hero-glow.one {
+  width: 620px;
+  height: 620px;
+  top: -240px;
+  right: -180px;
+  background: radial-gradient(circle, rgba(255, 138, 92, 0.16), transparent 65%);
+}
+
+.hero-glow.two {
+  width: 520px;
+  height: 520px;
+  left: -240px;
+  bottom: -260px;
+  background: radial-gradient(circle, rgba(255, 180, 84, 0.10), transparent 65%);
+}
+
+.hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 1180px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1.02fr 0.98fr;
+  gap: 72px;
+  align-items: center;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 180, 84, 0.28);
+  background: rgba(255, 180, 84, 0.08);
+  color: var(--amber);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 26px;
+}
+
+.badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 12px rgba(255, 180, 84, 0.9);
+}
+
+.hero h1 {
+  font-size: clamp(38px, 5.4vw, 60px);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  margin-bottom: 22px;
+}
+
+.grad-text {
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-sub {
+  color: var(--muted);
+  font-size: 17px;
+  max-width: 520px;
+  margin-bottom: 34px;
+}
+
+.hero-cta { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 38px; }
+
+.hero-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+
+.chip-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); }
+
+/* ---------- mock window ---------- */
+.hero-visual { position: relative; }
+
+.window {
+  position: relative;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #12121a, #0d0d13);
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  transform: perspective(1200px) rotateY(-4deg) rotateX(1deg);
+  transition: transform 0.6s var(--ease);
+}
+
+.hero-visual:hover .window { transform: perspective(1200px) rotateY(0) rotateX(0); }
+
+.window-bar {
+  height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.win-dot { width: 9px; height: 9px; border-radius: 50%; opacity: 0.9; }
+.win-dot:nth-child(1) { background: #ff5f57; }
+.win-dot:nth-child(2) { background: #febc2e; }
+.win-dot:nth-child(3) { background: #28c840; }
+
+.window-title {
+  margin-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--faint);
+}
+
+.window-body { display: flex; min-height: 330px; }
+
+.window-sidebar {
+  width: 138px;
+  flex-shrink: 0;
+  padding: 14px 10px;
+  border-right: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.side-folder { padding: 6px 8px; color: var(--amber); opacity: 0.9; }
+.side-file { padding: 6px 8px 6px 18px; border-radius: 6px; cursor: default; }
+.side-file.active { background: rgba(255, 180, 84, 0.1); color: var(--amber); }
+.side-file.section { color: var(--muted); }
+
+.window-main { flex: 1; padding: 16px 18px; overflow: hidden; }
+
+.mock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.mock-head h3 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+
+.mock-head span {
+  font-size: 11px;
+  color: var(--amber);
+  background: rgba(255, 180, 84, 0.09);
+  border: 1px solid rgba(255, 180, 84, 0.22);
+  padding: 3px 9px;
+  border-radius: 999px;
+}
+
+.mock-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.mock-card-title {
+  font-size: 11px;
+  color: var(--faint);
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.mock-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-size: 12px;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+}
+
+.mock-row:last-child { border-bottom: none; }
+
+.mock-tag {
+  font-size: 10px;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.mock-tag.hard { color: var(--rose); background: rgba(255, 122, 107, 0.12); }
+.mock-tag.mid { color: var(--amber); background: rgba(255, 180, 84, 0.12); }
+
+.mock-row .title { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mock-row .due { font-size: 10px; color: var(--amber); white-space: nowrap; }
+
+.bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 7px 0 4px;
+}
+
+.bar {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+}
+
+.bar.b1 > i { width: 45%; background: linear-gradient(90deg, #ff7a6b, #ff9d6b); }
+.bar.b2 > i { width: 33%; background: linear-gradient(90deg, #ffb454, #ffd08a); }
+.bar.b3 > i { width: 22%; background: linear-gradient(90deg, #7ed6a5, #a9e8c3); }
+
+.weak-list { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+.weak-item { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+.weak-item b { color: var(--text); font-weight: 600; }
+
+.float-chip {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 15px;
+  border-radius: 13px;
+  border: 1px solid var(--border-strong);
+  background: rgba(18, 18, 26, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  font-size: 12.5px;
+  font-weight: 600;
+  animation: floaty 6s ease-in-out infinite;
+}
+
+.float-chip small {
+  font-weight: 400;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+.float-chip .kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: var(--amber);
+}
+
+.fc-1 { top: -22px; left: -28px; animation-delay: 0s; }
+.fc-2 { bottom: -24px; right: -14px; animation-delay: 1.5s; }
+.fc-3 { bottom: 90px; left: -52px; animation-delay: 3s; display: none; }
+
+@keyframes floaty {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+/* ---------- stats ---------- */
+.stats {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.stats-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 42px 28px;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 28px;
+}
+
+.stat { text-align: center; }
+
+.stat b {
+  display: block;
+  font-size: clamp(26px, 3vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 4px;
+}
+
+.stat span { font-size: 13px; color: var(--muted); }
+
+/* ---------- sections ---------- */
+section.block { position: relative; z-index: 1; }
+
+.section-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 110px 28px;
+}
+
+.section-head {
+  max-width: 640px;
+  margin-bottom: 56px;
+}
+
+.section-head.center { margin-left: auto; margin-right: auto; text-align: center; }
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin-bottom: 14px;
+}
+
+.eyebrow::before {
+  content: "";
+  width: 22px;
+  height: 1.5px;
+  background: var(--grad);
+}
+
+.section-head.center .eyebrow::after {
+  content: "";
+  width: 22px;
+  height: 1.5px;
+  background: var(--grad);
+}
+
+.section-head h2 {
+  font-size: clamp(28px, 3.6vw, 40px);
+  letter-spacing: -0.03em;
+  line-height: 1.18;
+  font-weight: 800;
+  margin-bottom: 16px;
+}
+
+.section-head p { color: var(--muted); font-size: 16px; }
+
+/* ---------- flow ---------- */
+.flow-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 18px;
+  position: relative;
+}
+
+.flow-grid::before {
+  content: "";
+  position: absolute;
+  top: 34px;
+  left: 7%;
+  right: 7%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 180, 84, 0.35), rgba(255, 122, 107, 0.35), transparent);
+}
+
+.flow-step {
+  position: relative;
+  text-align: center;
+  padding: 0 6px;
+}
+
+.flow-num {
+  position: relative;
+  z-index: 1;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 18px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--amber);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  transition: transform 0.35s var(--ease), border-color 0.35s, color 0.35s;
+}
+
+.flow-step:hover .flow-num {
+  transform: translateY(-5px);
+  border-color: rgba(255, 180, 84, 0.5);
+  color: var(--rose);
+}
+
+.flow-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.flow-step p { font-size: 13px; color: var(--muted); line-height: 1.6; }
+
+/* ---------- features ---------- */
+.features-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+}
+
+.feature {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 30px 28px;
+  overflow: hidden;
+  transition: transform 0.4s var(--ease), border-color 0.4s, background 0.4s, box-shadow 0.4s;
+}
+
+.feature::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(420px circle at var(--mx, 50%) var(--my, 0%), rgba(255, 180, 84, 0.08), transparent 60%);
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+}
+
+.feature:hover {
+  transform: translateY(-5px);
+  border-color: rgba(255, 180, 84, 0.3);
+  background: var(--card-hover);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+}
+
+.feature:hover::after { opacity: 1; }
+
+.feature-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 180, 84, 0.16), rgba(255, 122, 107, 0.12));
+  border: 1px solid rgba(255, 180, 84, 0.24);
+  display: grid;
+  place-items: center;
+  color: var(--amber);
+  margin-bottom: 20px;
+}
+
+.feature-icon svg { width: 21px; height: 21px; }
+
+.feature h3 { font-size: 17px; font-weight: 700; margin-bottom: 10px; letter-spacing: -0.01em; }
+.feature p { font-size: 14px; color: var(--muted); line-height: 1.7; }
+
+/* ---------- quickstart ---------- */
+.quick-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 60px;
+  align-items: start;
+}
+
+.qs-step {
+  display: flex;
+  gap: 18px;
+  padding: 20px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.07);
+}
+
+.qs-step:last-child { border-bottom: none; }
+
+.qs-num {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: var(--grad);
+  color: #171208;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
+  box-shadow: 0 8px 22px rgba(255, 138, 92, 0.25);
+}
+
+.qs-step h3 { font-size: 16px; font-weight: 700; margin-bottom: 5px; }
+.qs-step p { font-size: 14px; color: var(--muted); }
+.qs-step .kbd {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-strong);
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+.terminal {
+  position: sticky;
+  top: 100px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, #13131b, #0d0d13);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.terminal-bar {
+  height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.terminal-body { padding: 24px; }
+
+.term-line {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.9;
+}
+
+.term-line .prompt { color: var(--amber); }
+.term-line .cmd { color: var(--text); }
+.term-line .comment { color: var(--faint); }
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.copy-row code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border-strong);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: all 0.25s;
+}
+
+.copy-btn:hover { border-color: rgba(255, 180, 84, 0.45); color: var(--amber); }
+.copy-btn.copied { border-color: rgba(126, 214, 165, 0.5); color: #7ed6a5; }
+
+.term-note {
+  margin-top: 16px;
+  font-size: 12.5px;
+  color: var(--faint);
+  line-height: 1.7;
+}
+
+.term-note a { color: var(--amber); }
+
+/* ---------- faq ---------- */
+.faq-list {
+  max-width: 780px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.faq details {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--card);
+  overflow: hidden;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.faq details[open] { border-color: rgba(255, 180, 84, 0.3); background: var(--card-hover); }
+
+.faq summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+}
+
+.faq summary::-webkit-details-marker { display: none; }
+
+.faq-icon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  display: grid;
+  place-items: center;
+  color: var(--amber);
+  transition: transform 0.35s var(--ease), background 0.3s, border-color 0.3s;
+}
+
+.faq details[open] .faq-icon {
+  transform: rotate(45deg);
+  background: rgba(255, 180, 84, 0.12);
+  border-color: rgba(255, 180, 84, 0.4);
+}
+
+.faq-icon svg { width: 13px; height: 13px; }
+
+.faq-answer { padding: 0 22px 20px; color: var(--muted); font-size: 14px; line-height: 1.8; }
+.faq-answer code {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  padding: 1px 6px;
+  border-radius: 5px;
+  color: var(--amber);
+}
+
+/* ---------- CTA band ---------- */
+.cta-band {
+  position: relative;
+  z-index: 1;
+  padding: 100px 28px;
+}
+
+.cta-card {
+  max-width: 1180px;
+  margin: 0 auto;
+  position: relative;
+  border: 1px solid rgba(255, 180, 84, 0.22);
+  border-radius: 30px;
+  background:
+    radial-gradient(700px circle at 85% -40%, rgba(255, 138, 92, 0.14), transparent 60%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.012));
+  padding: 70px 56px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.cta-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36'%3E%3Cpath d='M36 0H0v36' fill='none' stroke='rgba(255,255,255,0.03)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+.cta-card h2 {
+  position: relative;
+  font-size: clamp(26px, 3.4vw, 38px);
+  letter-spacing: -0.03em;
+  margin-bottom: 14px;
+  font-weight: 800;
+}
+
+.cta-card p { position: relative; color: var(--muted); max-width: 560px; margin: 0 auto 32px; }
+.cta-actions { position: relative; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+/* ---------- footer ---------- */
+footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid var(--border);
+  padding: 44px 28px 52px;
+}
+
+.footer-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.footer-brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 14.5px; }
+.footer-links { display: flex; gap: 22px; font-size: 13px; color: var(--muted); }
+.footer-links a:hover { color: var(--text); }
+.footer-note { width: 100%; text-align: center; color: var(--faint); font-size: 12px; margin-top: 26px; }
+
+/* ---------- reveal ---------- */
+.reveal {
+  opacity: 0;
+  transform: translateY(26px);
+  transition: opacity 0.8s var(--ease), transform 0.8s var(--ease);
+  transition-delay: var(--d, 0ms);
+}
+
+.reveal.in { opacity: 1; transform: none; }
+
+/* ---------- responsive ---------- */
+@media (max-width: 1020px) {
+  .hero-inner { grid-template-columns: 1fr; gap: 76px; }
+  .hero-copy { max-width: 640px; }
+  .hero-visual { max-width: 620px; }
+  .flow-grid { grid-template-columns: repeat(2, 1fr); gap: 34px 18px; }
+  .flow-grid::before { display: none; }
+  .features-grid { grid-template-columns: repeat(2, 1fr); }
+  .quick-wrap { grid-template-columns: 1fr; gap: 48px; }
+  .terminal { position: static; }
+  .fc-1 { left: -8px; }
+  .fc-2 { right: 0; }
+}
+
+@media (max-width: 760px) {
+  .nav-links { display: none; }
+  .menu-toggle { display: grid; }
+  .hero { padding: 64px 20px 56px; }
+  .hero h1 { font-size: clamp(32px, 9vw, 44px); }
+  .stats-inner { grid-template-columns: repeat(2, 1fr); gap: 30px; }
+  .section-inner { padding: 78px 20px; }
+  .features-grid { grid-template-columns: 1fr; }
+  .window { transform: none; }
+  .hero-visual:hover .window { transform: none; }
+  .float-chip { display: none; }
+  .cta-card { padding: 52px 24px; }
+  .footer-inner { justify-content: center; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001s !important;
+    transition-duration: 0.001s !important;
+  }
+  .reveal { opacity: 1; transform: none; }
+}
+</style>
 </head>
 <body>
-  <div class="crt" aria-hidden="true"></div>
-  <div class="wrap">
-    <div class="terminal">
-      <div class="titlebar">
-        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="title">nightowl@nightowl.ren: ~ — bash</span>
-        <span class="pad" aria-hidden="true"></span>
-      </div>
-      <div class="screen" id="screen" aria-live="polite"></div>
-      <div class="statusbar">
-        <span>NightOwl OS — TTY1</span>
-        <span id="uptime">UPTIME 00:00:00</span>
-        <span id="hint"></span>
-      </div>
+<div class="noise" aria-hidden="true"></div>
+
+<header class="nav" id="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </span>
+      错题管理系统
+    </a>
+    <nav class="nav-links" aria-label="主导航">
+      <a href="#flow">核心流程</a>
+      <a href="#features">功能特性</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="#faq">常见问题</a>
+    </nav>
+    <div class="nav-actions">
+      <a class="btn btn-ghost btn-sm" href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+        GitHub
+      </a>
+      <button class="menu-toggle" id="menuToggle" aria-label="打开菜单" aria-expanded="false">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </button>
     </div>
   </div>
-  <input id="cmd" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="命令输入">
+  <div class="mobile-menu" id="mobileMenu">
+    <a href="#flow">核心流程</a>
+    <a href="#features">功能特性</a>
+    <a href="#quickstart">快速开始</a>
+    <a href="#faq">常见问题</a>
+    <a href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">GitHub 仓库</a>
+  </div>
+</header>
 
-  <script>
-    var screen = document.getElementById("screen");
-    var uptimeEl = document.getElementById("uptime");
-    var hintEl = document.getElementById("hint");
-    var cmdInput = document.getElementById("cmd");
-    var state = "boot"; // boot | busy | input
-    var promptText = "nightowl@nightowl:~$ ";
-    var promptEl = null;
+<main id="top">
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-glow one" aria-hidden="true"></div>
+    <div class="hero-glow two" aria-hidden="true"></div>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <span class="badge">Obsidian Vault · 开箱即用</span>
+        <h1>把每一道错题，<br>变成下一次<span class="grad-text">做对的题</span></h1>
+        <p class="hero-sub">
+          以截图为核心的错题管理系统：快捷键录入、仪表盘定位薄弱点、随机组卷自测、间隔复习自动排期。全程在 Obsidian 里完成，数据 100% 留在本地。
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">
+            查看 GitHub 仓库
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+          </a>
+          <a class="btn btn-ghost" href="#quickstart">快速开始</a>
+        </div>
+        <div class="hero-meta">
+          <span class="chip"><span class="chip-dot"></span>100% 本地 Markdown</span>
+          <span class="chip"><span class="chip-dot"></span>离线可用</span>
+          <span class="chip"><span class="chip-dot"></span>截图即错题</span>
+        </div>
+      </div>
 
-    var banner = [
-      "█   █  █████   ███   █   █  █████   ███   █   █  █    ",
-      "██  █    █    █      █   █    █    █   █  █   █  █    ",
-      "█ █ █    █    █ ███  █████    █    █   █  █ █ █  █    ",
-      "█  ██    █    █   █  █   █    █    █   █  ██ ██  █    ",
-      "█   █  █████   ███   █   █    █     ███   █   █  █████"
-    ];
+      <div class="hero-visual">
+        <div class="float-chip fc-1">
+          <span class="kbd">Ctrl</span><span class="kbd">Shift</span><span class="kbd">E</span>
+          一键录入
+          <small>自动生成笔记</small>
+        </div>
+        <div class="float-chip fc-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          智能复习
+          <small>1 → 3 → 7 → 15 → 30 天</small>
+        </div>
+        <div class="float-chip fc-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--rose)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M8 8h8v8H8z"/></svg>
+          薄弱考点 TOP 10
+        </div>
 
-    var bootLines = [
-      { text: "[ OK ] Initializing owl modules", speed: 14, pause: 170 },
-      { text: "[ OK ] Mounting study partition", speed: 14, pause: 170 },
-      { text: "[ OK ] Loading focus engine", speed: 14, pause: 170 },
-      { text: "[ OK ] Network ready: nightowl.ren", speed: 14, pause: 170 },
-      { text: "[ OK ] All systems nominal", speed: 14, pause: 320 },
-      { text: "" }
-    ];
+        <div class="window">
+          <div class="window-bar">
+            <span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span>
+            <span class="window-title">错题仪表盘.md — Obsidian</span>
+          </div>
+          <div class="window-body">
+            <aside class="window-sidebar">
+              <div class="side-folder">错题本/</div>
+              <div class="side-file">第18题.md</div>
+              <div class="side-file">P15-3.md</div>
+              <div class="side-file">期末-函数.md</div>
+              <div class="side-file section">试卷/随机组卷.md</div>
+              <div class="side-file section">模板/错题模板.md</div>
+              <div class="side-file active">错题仪表盘.md</div>
+            </aside>
+            <div class="window-main">
+              <div class="mock-head">
+                <h3>错题仪表盘</h3>
+                <span>今日待复习 · 3</span>
+              </div>
+              <div class="mock-card">
+                <div class="mock-card-title"><span>今日到期</span><span>优先复习</span></div>
+                <div class="mock-row"><span class="title">第18题 · 三角函数</span><span class="mock-tag hard">困难</span><span class="mock-tag">概念不清</span><span class="due">今天到期</span></div>
+                <div class="mock-row"><span class="title">P15-3 · 数列求和</span><span class="mock-tag mid">中等</span><span class="mock-tag">计算失误</span><span class="due">今天到期</span></div>
+                <div class="mock-row"><span class="title">期末-函数 · 单调性</span><span class="mock-tag hard">困难</span><span class="mock-tag">思路中断</span><span class="due">今天到期</span></div>
+              </div>
+              <div class="mock-card">
+                <div class="mock-card-title"><span>掌握程度分布</span><span>共 45 题</span></div>
+                <div class="bar-label"><span>未掌握</span><span>20 题 · 45%</span></div>
+                <div class="bar b1"><i></i></div>
+                <div class="bar-label"><span>部分掌握</span><span>15 题 · 33%</span></div>
+                <div class="bar b2"><i></i></div>
+                <div class="bar-label"><span>已掌握</span><span>10 题 · 22%</span></div>
+                <div class="bar b3"><i></i></div>
+              </div>
+              <div class="mock-card">
+                <div class="mock-card-title"><span>薄弱考点 TOP 3</span></div>
+                <div class="weak-list">
+                  <div class="weak-item"><span>三角函数</span><b>12</b></div>
+                  <div class="weak-item"><span>函数单调性</span><b>9</b></div>
+                  <div class="weak-item"><span>数列求和</span><b>7</b></div>
+                  <div class="weak-item"><span>不等式</span><b>6</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    function scrollDown() {
-      screen.scrollTop = screen.scrollHeight;
-    }
+  <!-- Stats -->
+  <section class="stats" aria-label="项目数据">
+    <div class="stats-inner">
+      <div class="stat"><b>1</b><span>个快捷键完成录入</span></div>
+      <div class="stat"><b>3</b><span>个预装社区插件</span></div>
+      <div class="stat"><b>1→30</b><span>天递进复习间隔</span></div>
+      <div class="stat"><b>100%</b><span>数据留在本地</span></div>
+    </div>
+  </section>
 
-    function start() {
-      state = "boot";
-      hintEl.textContent = "";
-      cmdInput.value = "";
-      screen.innerHTML = "";
+  <!-- Flow -->
+  <section class="block" id="flow">
+    <div class="section-inner">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Workflow</span>
+        <h2>从一道错题，到真正掌握</h2>
+        <p>五个步骤串起完整闭环：记录不是终点，复习和复盘才是。</p>
+      </div>
+      <div class="flow-grid">
+        <div class="flow-step reveal" style="--d:0ms">
+          <div class="flow-num">1</div>
+          <h3>截图错题</h3>
+          <p>手机拍照或电脑截屏，随手保存错题原图</p>
+        </div>
+        <div class="flow-step reveal" style="--d:90ms">
+          <div class="flow-num">2</div>
+          <h3>一键录入</h3>
+          <p><span class="kbd">Ctrl+Shift+E</span> 自动生成结构化笔记</p>
+        </div>
+        <div class="flow-step reveal" style="--d:180ms">
+          <div class="flow-num">3</div>
+          <h3>定位薄弱点</h3>
+          <p>仪表盘看掌握程度、薄弱考点与错因分布</p>
+        </div>
+        <div class="flow-step reveal" style="--d:270ms">
+          <div class="flow-num">4</div>
+          <h3>随机组卷</h3>
+          <p>按难度、考点、错因筛选，到期题优先抽</p>
+        </div>
+        <div class="flow-step reveal" style="--d:360ms">
+          <div class="flow-num">5</div>
+          <h3>标记掌握</h3>
+          <p><span class="kbd">Ctrl+Shift+M</span> 自动安排下次复习</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
-      var pre = document.createElement("pre");
-      pre.className = "banner";
-      screen.appendChild(pre);
+  <!-- Features -->
+  <section class="block" id="features">
+    <div class="section-inner">
+      <div class="section-head center reveal">
+        <span class="eyebrow">Features</span>
+        <h2>六个能力，组成完整的错题闭环</h2>
+        <p>没有花哨功能，每个设计都围绕一件事：让你把错题真正吃透。</p>
+      </div>
+      <div class="features-grid">
+        <article class="feature reveal" style="--d:0ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+          </div>
+          <h3>一键录入</h3>
+          <p>按 <strong>Ctrl+Shift+E</strong> 依次填写题号、考点、错因、难度、答案，自动生成带 frontmatter 的错题笔记，粘贴截图即可保存。</p>
+        </article>
+        <article class="feature reveal" style="--d:80ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+          </div>
+          <h3>错题仪表盘</h3>
+          <p>今日待复习、掌握程度分布、难度分布、薄弱考点 TOP 10、错因分布、每周新增趋势，打开一眼看清问题在哪。</p>
+        </article>
+        <article class="feature reveal" style="--d:160ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="2"/><rect x="13" y="13" width="8" height="8" rx="2"/><path d="M7 13v5a2 2 0 0 0 2 2h5"/><path d="M17 3v5a2 2 0 0 1-2 2h-2"/></svg>
+          </div>
+          <h3>随机组卷</h3>
+          <p>按难度、掌握程度、考点、错因自由筛选；默认只抽到期的题，并保证 2 天内不重复抽到同一道。</p>
+        </article>
+        <article class="feature reveal" style="--d:240ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+          </div>
+          <h3>智能复习调度</h3>
+          <p>标记掌握程度时自动安排下次复习：未掌握 1 天，之后按 3 → 7 → 15 → 30 天递进，遵循记忆规律。</p>
+        </article>
+        <article class="feature reveal" style="--d:320ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9 10h6M12 7v6"/></svg>
+          </div>
+          <h3>错因与复盘</h3>
+          <p>录入时记录错因（概念不清、计算失误、思路中断…），每道题内置「我的复盘」区，复习后沉淀正确思路。</p>
+        </article>
+        <article class="feature reveal" style="--d:400ms">
+          <div class="feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+          </div>
+          <h3>便携即用</h3>
+          <p>仓库已预装 Dataview、Templater、QuickAdd 及全部配置，克隆后直接用 Obsidian 打开即可，无需从零搭建。</p>
+        </article>
+      </div>
+    </div>
+  </section>
 
-      var row = 0;
-      (function nextRow() {
-        if (row < banner.length) {
-          pre.textContent += banner[row] + "\n";
-          row++;
-          scrollDown();
-          setTimeout(nextRow, 120);
-        } else {
-          typeLines(0);
-        }
-      })();
-    }
+  <!-- Quickstart -->
+  <section class="block" id="quickstart">
+    <div class="section-inner">
+      <div class="section-head reveal">
+        <span class="eyebrow">Quickstart</span>
+        <h2>四步，开始你的第一道错题</h2>
+        <p>从克隆仓库到完成第一次自测，全程不超过五分钟。</p>
+      </div>
+      <div class="quick-wrap">
+        <div class="qs-steps">
+          <div class="qs-step reveal" style="--d:0ms">
+            <div class="qs-num">1</div>
+            <div>
+              <h3>克隆或下载仓库</h3>
+              <p>把项目复制到本地，复制下方命令即可。</p>
+            </div>
+          </div>
+          <div class="qs-step reveal" style="--d:80ms">
+            <div class="qs-num">2</div>
+            <div>
+              <h3>用 Obsidian 打开 Vault</h3>
+              <p>选择「打开文件夹作为 Vault」，插件与配置已全部预装。</p>
+            </div>
+          </div>
+          <div class="qs-step reveal" style="--d:160ms">
+            <div class="qs-num">3</div>
+            <div>
+              <h3>录入第一道错题</h3>
+              <p>按 <span class="kbd">Ctrl+Shift+E</span> 填写信息，把截图 <span class="kbd">Ctrl+V</span> 粘贴进笔记。</p>
+            </div>
+          </div>
+          <div class="qs-step reveal" style="--d:240ms">
+            <div class="qs-num">4</div>
+            <div>
+              <h3>看统计，做自测</h3>
+              <p>打开「错题仪表盘」定位薄弱点，再打开「随机组卷」开始练习。</p>
+            </div>
+          </div>
+        </div>
 
-    function typeLines(i) {
-      if (i >= bootLines.length) {
-        readyForInput();
-        return;
-      }
-      var item = bootLines[i];
-      var div = document.createElement("div");
-      div.className = "line";
-      screen.appendChild(div);
-      var pos = 0;
-      (function tick() {
-        if (pos <= item.text.length) {
-          div.textContent = item.text.slice(0, pos);
-          pos++;
-          scrollDown();
-          setTimeout(tick, item.speed);
-        } else {
-          setTimeout(function () { typeLines(i + 1); }, item.pause);
-        }
-      })();
-    }
+        <div class="terminal reveal" style="--d:120ms">
+          <div class="terminal-bar">
+            <span class="win-dot"></span><span class="win-dot"></span><span class="win-dot"></span>
+            <span style="margin-left:8px">terminal — zsh</span>
+          </div>
+          <div class="terminal-body">
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">git clone https://github.com/Nightow114514/obsidian-mistake-notebook.git</span></div>
+            <div class="term-line"><span class="comment"># 打开 Obsidian → 打开文件夹作为 Vault → 选择该项目</span></div>
+            <div class="term-line"><span class="prompt">❯</span> <span class="cmd">按 Ctrl+Shift+E 录入错题，粘贴截图</span></div>
+            <div class="copy-row">
+              <code>git clone https://github.com/Nightow114514/obsidian-mistake-notebook.git</code>
+              <button class="copy-btn" id="copyBtn" type="button">
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>复制</span>
+              </button>
+            </div>
+            <p class="term-note">
+              需要先安装 <a href="https://obsidian.md" target="_blank" rel="noopener">Obsidian</a>。详细配置与常见问题见
+              <a href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">使用指南</a>。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
 
-    function readyForInput() {
-      newPrompt();
-      state = "input";
-      hintEl.textContent = "TAP / CLICK HERE TO TYPE — 'help'";
-      setTimeout(function () {
-        try { cmdInput.focus({ preventScroll: true }); } catch (e) { cmdInput.focus(); }
-      }, 60);
-    }
+  <!-- FAQ -->
+  <section class="block" id="faq">
+    <div class="section-inner">
+      <div class="section-head center reveal">
+        <span class="eyebrow">FAQ</span>
+        <h2>常见问题</h2>
+        <p>关于数据、插件和日常使用，你可能想知道的都在这里。</p>
+      </div>
+      <div class="faq-list">
+        <details class="reveal" style="--d:0ms">
+          <summary>
+            需要自己安装插件吗？
+            <span class="faq-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </summary>
+          <div class="faq-answer">不需要。仓库里的 <code>.obsidian</code> 已预装 Dataview、Templater、QuickAdd 及全部配置，用 Obsidian 打开 Vault 后确认三个插件开关为绿色即可。</div>
+        </details>
+        <details class="reveal" style="--d:60ms">
+          <summary>
+            错题数据存在哪里？会传到 GitHub 吗？
+            <span class="faq-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </summary>
+          <div class="faq-answer">所有笔记和截图都以 Markdown 文件保存在本地。仓库已配置 git 忽略规则，<code>错题本/</code> 和 <code>错题原图/</code> 里的个人数据不会上传，只在你的设备上。</div>
+        </details>
+        <details class="reveal" style="--d:120ms">
+          <summary>
+            会连续抽到同一道题吗？
+            <span class="faq-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </summary>
+          <div class="faq-answer">默认不会。做完一组卷子后点击「✅ 本次已做完」，抽中的题会记下日期，2 天内不再被抽到。想调整可在组卷文件顶部把 <code>skip-recent-days</code> 改为其他天数。</div>
+        </details>
+        <details class="reveal" style="--d:180ms">
+          <summary>
+            换电脑或发给别人怎么迁移？
+            <span class="faq-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </summary>
+          <div class="faq-answer">直接复制整个项目文件夹即可，配置都在 <code>.obsidian</code> 里。也可以用 Obsidian Sync 或 Git 同步，个人笔记会随仓库规则继续被忽略。</div>
+        </details>
+        <details class="reveal" style="--d:240ms">
+          <summary>
+            旧错题会出现在「今日待复习」里吗？
+            <span class="faq-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </summary>
+          <div class="faq-answer">会。没有设置复习日期的旧题会按“已到期”处理，优先进入今日待复习；复习一次并标记掌握程度后，系统就会自动安排后续复习日期。</div>
+        </details>
+      </div>
+    </div>
+  </section>
 
-    function newPrompt() {
-      promptEl = document.createElement("div");
-      promptEl.className = "line";
-      screen.appendChild(promptEl);
-      renderPrompt();
-    }
+  <!-- CTA -->
+  <section class="cta-band">
+    <div class="cta-card reveal">
+      <h2>今天就开始，把错题变成进步</h2>
+      <p>无论你在备考、刷题还是日常积累，这个 Vault 都能让你的每一次失误都被记录、被复习、被真正解决。</p>
+      <div class="cta-actions">
+        <a class="btn btn-primary" href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 19c-5 1.5-5-2.5-7-3m14 6v-3.87a3.37 3.37 0 0 0-.94-2.61c3.14-.35 6.44-1.54 6.44-7A5.44 5.44 0 0 0 20 4.77 5.07 5.07 0 0 0 19.91 1S18.73.65 16 2.48a13.38 13.38 0 0 0-7 0C6.27.65 5.09 1 5.09 1A5.07 5.07 0 0 0 5 4.77a5.44 5.44 0 0 0-1.5 3.78c0 5.42 3.3 6.61 6.44 7A3.37 3.37 0 0 0 9 18.13V22"/></svg>
+          Star 这个仓库
+        </a>
+        <a class="btn btn-ghost" href="#quickstart">回到快速开始</a>
+      </div>
+    </div>
+  </section>
+</main>
 
-    function renderPrompt() {
-      if (!promptEl) return;
-      promptEl.textContent = promptText + cmdInput.value;
-      var cur = document.createElement("span");
-      cur.className = "cursor";
-      promptEl.appendChild(cur);
-      scrollDown();
-    }
+<footer>
+  <div class="footer-inner">
+    <div class="footer-brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </span>
+      Obsidian 错题管理系统
+    </div>
+    <div class="footer-links">
+      <a href="#flow">核心流程</a>
+      <a href="#features">功能特性</a>
+      <a href="#quickstart">快速开始</a>
+      <a href="https://github.com/Nightow114514/obsidian-mistake-notebook" target="_blank" rel="noopener">GitHub</a>
+    </div>
+    <p class="footer-note">以 Obsidian 构建 · 数据永远属于你 · Nightow114514/obsidian-mistake-notebook</p>
+  </div>
+</footer>
 
-    function printCommandLines(lines, done) {
-      var i = 0;
-      (function next() {
-        if (i >= lines.length) {
-          if (done) done();
-          return;
-        }
-        var div = document.createElement("div");
-        div.className = "line" + (lines[i].cls ? " " + lines[i].cls : "");
-        screen.appendChild(div);
-        var text = lines[i].text;
-        var pos = 0;
-        (function tick() {
-          if (pos <= text.length) {
-            div.textContent = text.slice(0, pos);
-            pos++;
-            scrollDown();
-            setTimeout(tick, 10);
-          } else {
-            i++;
-            setTimeout(next, 70);
-          }
-        })();
-      })();
-    }
+<script>
+  (function () {
+    var nav = document.getElementById("nav");
+    var onScroll = function () {
+      nav.classList.toggle("scrolled", window.scrollY > 12);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
 
-    function runCommand() {
-      var raw = cmdInput.value.trim();
-      cmdInput.value = "";
-      if (state !== "input") return;
-      state = "busy";
-      hintEl.textContent = "";
-      var cmd = raw.toLowerCase();
-      var lines;
-
-      if (raw === "") {
-        lines = [];
-      } else if (cmd === "help") {
-        lines = [
-          { text: "available commands:" },
-          { text: "  help     show this list" },
-          { text: "  ls       list directories" },
-          { text: "  clear    clear the screen" },
-          { text: "  reboot   reboot the system" },
-          { text: "  (hint: some commands are hidden)" }
-        ];
-      } else if (cmd === "ls") {
-        lines = [{ text: "study/  notes/  ideas/" }];
-      } else if (cmd === "father") {
-        lines = [
-          { text: "[ OK ] father detected" },
-          { text: "  陈祖鹏" },
-          { text: "[ OK ] connection established" }
-        ];
-      } else if (cmd === "clear") {
-        screen.innerHTML = "";
-        newPrompt();
-        state = "input";
-        hintEl.textContent = "TAP / CLICK HERE TO TYPE — 'help'";
-        cmdInput.focus();
-        return;
-      } else if (cmd === "reboot") {
-        start();
-        return;
-      } else {
-        lines = [{ text: "bash: " + raw + ": command not found" }];
-      }
-
-      printCommandLines(lines, function () {
-        newPrompt();
-        state = "input";
-        hintEl.textContent = "TAP / CLICK HERE TO TYPE — 'help'";
-        cmdInput.focus();
+    // mobile menu
+    var menuToggle = document.getElementById("menuToggle");
+    var mobileMenu = document.getElementById("mobileMenu");
+    menuToggle.addEventListener("click", function () {
+      var open = mobileMenu.classList.toggle("open");
+      menuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+    mobileMenu.querySelectorAll("a").forEach(function (a) {
+      a.addEventListener("click", function () {
+        mobileMenu.classList.remove("open");
+        menuToggle.setAttribute("aria-expanded", "false");
       });
-    }
-
-    cmdInput.addEventListener("input", function () {
-      if (state === "input") renderPrompt();
     });
 
-    cmdInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && state === "input") {
-        e.preventDefault();
-        runCommand();
+    // reveal on scroll
+    var reveals = document.querySelectorAll(".reveal");
+    if ("IntersectionObserver" in window) {
+      var io = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("in");
+            io.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.12, rootMargin: "0px 0px -40px 0px" });
+      reveals.forEach(function (el) { io.observe(el); });
+    } else {
+      reveals.forEach(function (el) { el.classList.add("in"); });
+    }
+
+    // cursor spotlight on feature cards
+    document.querySelectorAll(".feature").forEach(function (card) {
+      card.addEventListener("pointermove", function (e) {
+        var r = card.getBoundingClientRect();
+        card.style.setProperty("--mx", (e.clientX - r.left) + "px");
+        card.style.setProperty("--my", (e.clientY - r.top) + "px");
+      });
+    });
+
+    // copy command
+    var copyBtn = document.getElementById("copyBtn");
+    copyBtn.addEventListener("click", function () {
+      var text = "git clone https://github.com/Nightow114514/obsidian-mistake-notebook.git";
+      var done = function () {
+        copyBtn.classList.add("copied");
+        copyBtn.querySelector("span").textContent = "已复制";
+        setTimeout(function () {
+          copyBtn.classList.remove("copied");
+          copyBtn.querySelector("span").textContent = "复制";
+        }, 1800);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done).catch(function () {
+          fallbackCopy(text);
+          done();
+        });
+      } else {
+        fallbackCopy(text);
+        done();
       }
     });
 
-    document.addEventListener("click", function () {
-      if (state === "input") cmdInput.focus();
-    });
-
-    document.addEventListener("keydown", function () {
-      if (state === "input") cmdInput.focus();
-    });
-
-    var seconds = 0;
-    setInterval(function () {
-      seconds++;
-      var m = String(Math.floor(seconds / 60)).padStart(2, "0");
-      var s = String(seconds % 60).padStart(2, "0");
-      uptimeEl.textContent = "UPTIME 00:" + m + ":" + s;
-    }, 1000);
-
-    start();
-  </script>
+    function fallbackCopy(text) {
+      var ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e) {}
+      document.body.removeChild(ta);
+    }
+  })();
+</script>
 </body>
 </html>
